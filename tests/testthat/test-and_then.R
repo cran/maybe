@@ -1,26 +1,34 @@
-test_that("and_then will fail with a non-maybe value", {
+test_that("and_then will fail with non-maybe values", {
   for_all(
-    a = any_vector(),
-    property = \(a) perhaps(and_then, default = "failure")(a, identity) |>
-      expect_equal("failure")
+    a = anything(),
+    property = \(a)
+      and_then(a, identity) |>
+        expect_error()
   )
 })
 
-test_that("and_then will not change the input with identity function", {
-  nothing() |> and_then(identity) |> is_nothing() |> expect_true()
-
+test_that("and_then will fail with a function which doesn't return a maybe value", {
   for_all(
-    a = any_vector(),
-    property = \(a) just(a) |> and_then(identity) |> expect_equal(just(a))
+    a = anything(),
+    property = \(a)
+      just(a) |>
+        and_then(identity) |>
+        expect_error()
   )
 })
 
-test_that("and_then will return a non-nested maybe value with a safe function", {
-  safe_sqrt <- maybe(sqrt, ensure = not_nan)
+test_that("and_then will not modify a maybe value with a safe identity function", {
+  safe_identity <- \(a) just(identity(a))
 
-  res_just <- just(1) |> and_then(safe_sqrt)
-  res_just |> flatten_maybe() |> expect_equal(res_just)
+  nothing() |>
+    and_then(safe_identity) |>
+    expect_identical(nothing())
 
-  res_nothing <- nothing() |> and_then(safe_sqrt)
-  res_nothing |> flatten_maybe() |> expect_equal(res_nothing)
+  for_all(
+    a = anything(),
+    property = \(a)
+      just(a) |>
+        and_then(safe_identity) |>
+        expect_identical(just(a))
+  )
 })

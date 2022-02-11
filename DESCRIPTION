@@ -1,6 +1,6 @@
 Package: maybe
 Title: The Maybe Monad
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
     person(given = "Andrew",
            family = "McNeil",
@@ -18,11 +18,11 @@ BugReports: https://github.com/armcn/maybe/issues
 Encoding: UTF-8
 RoxygenNote: 7.1.1
 Depends: R (>= 4.1.0)
-Suggests: testthat (>= 3.0.0), covr, quickcheck
+Suggests: testthat (>= 3.0.0), quickcheck (>= 0.1.0), covr
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2022-01-25 22:50:53 UTC; mcneil
+Packaged: 2022-02-11 20:30:54 UTC; mcneil
 Author: Andrew McNeil [aut, cre]
 Maintainer: Andrew McNeil <andrew.richard.mcneil@gmail.com>
 Repository: CRAN
-Date/Publication: 2022-01-27 08:50:01 UTC
+Date/Publication: 2022-02-11 20:50:02 UTC

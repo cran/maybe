@@ -27,9 +27,9 @@ nothing <- function() {
 #' the function would normally return an error or warning the modified function
 #' will return a 'Nothing' value, otherwise it will return a 'Just' value.
 #' If a predicate function is provided with the parameter `ensure`, if the
-#' predicate returns `FALSE` when evaluated on the return value of the function,
-#' then a 'Nothing' value will be returned by the modified function, otherwise
-#' it will return a 'Just' value.
+#' predicate returns `TRUE` when evaluated on the return value of the function,
+#' then a 'Just' value will be returned by the modified function, otherwise
+#' it will return a 'Nothing' value.
 #'
 #' @param .f A function to modify
 #' @param ensure A predicate function
@@ -78,9 +78,9 @@ maybe <- function(.f, ensure = \(a) TRUE, allow_warning = FALSE) {
 #' or a default value in some circumstances. If the function would normally
 #' return an error or warning the modified function will return a default value,
 #' otherwise it will return the expected value. If a predicate function is
-#' provided with the parameter `ensure`, if the predicate returns `FALSE` when
-#' evaluated on the return value of the function, then a default value will be
-#' returned by the modified function, otherwise it will return the expected
+#' provided with the parameter `ensure`, if the predicate returns `TRUE` when
+#' evaluated on the return value of the function, then the expected value will
+#' be returned by the modified function, otherwise it will return the default
 #' value.
 #'
 #' @param .f A function to modify
@@ -108,26 +108,25 @@ perhaps <- function(.f, default, ensure = \(a) TRUE, allow_warning = FALSE) {
 #' @param ... Named arguments for the function `.f`
 #'
 #' @examples
-#' just(9) |> map_maybe(sqrt)
-#' nothing() |> map_maybe(sqrt)
+#' just(9) |> maybe_map(sqrt)
+#' nothing() |> maybe_map(sqrt)
 #' @return A maybe value
 #' @export
-map_maybe <- function(.m, .f, ...) {
-  UseMethod("map_maybe", .m)
-}
+maybe_map <- function(.m, .f, ...) {
+  assert_is_maybe(.m)
 
-#' @export
-map_maybe.maybe <- function(.m, .f, ...) {
   if (is_just(.m))
-    just(.f(.m$content, ...))
+    .f(.m$content, ...) |>
+      assert_returns_not_maybe() |>
+      just()
 
   else
     nothing()
 }
 
-#' @rdname map_maybe
+#' @rdname maybe_map
 #' @export
-fmap <- map_maybe
+fmap <- maybe_map
 
 #' Evaluate a maybe returning function on a maybe value
 #'
@@ -144,12 +143,14 @@ fmap <- map_maybe
 #' @return A maybe value
 #' @export
 and_then <- function(.m, .f, ...) {
-  UseMethod("and_then", .m)
-}
+  assert_is_maybe(.m)
 
-#' @export
-and_then.maybe <- function(.m, .f, ...) {
-  flatten_maybe(map_maybe(.m, .f, ...))
+  if (is_just(.m))
+    .f(.m$content, ...) |>
+      assert_returns_maybe()
+
+  else
+    nothing()
 }
 
 #' @rdname and_then
@@ -161,18 +162,18 @@ bind <- and_then
 #' @param .m A maybe value
 #'
 #' @examples
-#' just(just(1)) |> flatten_maybe()
-#' just(nothing()) |> flatten_maybe()
-#' just(1) |> flatten_maybe()
-#' nothing() |> flatten_maybe()
+#' just(just(1)) |> maybe_flatten()
+#' just(nothing()) |> maybe_flatten()
+#' just(1) |> maybe_flatten()
+#' nothing() |> maybe_flatten()
 #' @return A maybe value
 #' @export
-flatten_maybe <- function(.m) {
-  UseMethod("flatten_maybe", .m)
+maybe_flatten <- function(.m) {
+  UseMethod("maybe_flatten", .m)
 }
 
 #' @export
-flatten_maybe.maybe <- function(.m) {
+maybe_flatten.maybe <- function(.m) {
   if (is_just(.m) && is_maybe(.m$content))
     .m$content
 
@@ -180,9 +181,9 @@ flatten_maybe.maybe <- function(.m) {
     .m
 }
 
-#' @rdname flatten_maybe
+#' @rdname maybe_flatten
 #' @export
-join <- flatten_maybe
+join <- maybe_flatten
 
 #' Unwrap a maybe value or return a default
 #'
@@ -195,11 +196,8 @@ join <- flatten_maybe
 #' @return The unwrapped maybe value or the default value
 #' @export
 with_default <- function(.m, default) {
-  UseMethod("with_default", .m)
-}
+  assert_is_maybe(.m)
 
-#' @export
-with_default.maybe <- function(.m, default) {
   if (is_just(.m))
     .m$content
 
@@ -211,9 +209,98 @@ with_default.maybe <- function(.m, default) {
 #' @export
 from_maybe <- with_default
 
+#' Check if a maybe value contains a specific value
+#'
+#' If the maybe value is a 'Nothing' variant `FALSE` will be returned. If it is
+#' a 'Just' variant the contents will be unwrapped and compared to the `value`
+#' argument using `base::identical`.
+#'
+#' @param .m A maybe value
+#' @param value A value to check
+#'
+#' @examples
+#' just(1) |> maybe_contains(1)
+#' just("a") |> maybe_contains(1)
+#' nothing() |> maybe_contains(1)
+#' @return `TRUE` or `FALSE`
+#' @export
+maybe_contains <- function(.m, value) {
+  assert_is_maybe(.m)
+
+  if (is_nothing(.m))
+    FALSE
+
+  else
+    identical(.m$content, value)
+}
+
+#' Check if two maybe values are equal
+#'
+#' If both values are 'Nothing' variants or both values are 'Just' variants with
+#' identical contents `TRUE` will be returned, otherwise `FALSE`.
+#'
+#' @param .m1 A maybe value
+#' @param .m2 A maybe value
+#'
+#' @examples
+#' maybe_equal(just(1), just(1))
+#' maybe_equal(just(1), just(2))
+#' maybe_equal(nothing(), nothing())
+#' @return `TRUE` or `FALSE`
+#' @export
+maybe_equal <- function(.m1, .m2) {
+  if (!is_maybe(.m1) || !is_maybe(.m2))
+    stop("Both arguments must be maybe values", call. = FALSE)
+
+  else
+    identical(.m1, .m2)
+}
+
+#' Check if an object is a maybe value
+#'
+#' @param a Object to check
+#'
+#' @examples
+#' is_maybe(1)
+#' is_maybe(just(1))
+#' is_maybe(nothing())
+#' @return `TRUE` or `FALSE`
+#' @export
+is_maybe <- function(a) {
+  identical(class(a), "maybe")
+}
+
+#' Check if an object is a 'Just' value
+#'
+#' @param a Object to check
+#'
+#' @examples
+#' is_just(1)
+#' is_just(just(1))
+#' is_just(nothing())
+#' @return `TRUE` or `FALSE`
+#' @export
+is_just <- function(a) {
+  and(is_maybe, \(b) identical(b$type, "just"))(a)
+}
+
+#' Check if an object is a 'Nothing' value
+#'
+#' @param a Object to check
+#'
+#' @examples
+#' is_nothing(1)
+#' is_nothing(just(1))
+#' is_nothing(nothing())
+#' @return `TRUE` or `FALSE`
+#' @export
+is_nothing <- function(a) {
+  and(is_maybe, \(b) identical(b$type, "nothing"))(a)
+}
+
 #' @export
 print.maybe <- function(x, ...) {
-  if (x$type == "just") {
+  if (is_just(x)) {
     cat("Just\n")
     print(x$content, ...)
 
@@ -223,4 +310,34 @@ print.maybe <- function(x, ...) {
 
 as_maybe <- function(a) {
   structure(a, class = "maybe")
+}
+
+assert_is_maybe <- function(a) {
+  if (is_maybe(a))
+    invisible(a)
+
+  else
+    stop("The argument '.m' must be a maybe value.", call. = FALSE)
+}
+
+assert_returns_maybe <- function(a) {
+  if (is_maybe(a))
+    invisible(a)
+
+  else
+    stop(
+      "The function provided to 'and_then' must return a maybe value.",
+      call. = FALSE
+    )
+}
+
+assert_returns_not_maybe <- function(a) {
+  if (is_maybe(a))
+    stop(
+      "The function provided to 'maybe_map' must not return a maybe value.",
+      call. = FALSE
+    )
+
+  else
+    invisible(a)
 }
