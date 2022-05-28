@@ -119,7 +119,7 @@ maybe_map <- function(.m, .f, ...) {
   assert_is_maybe(.m)
 
   if (is_just(.m))
-    .f(.m$content, ...) %>%
+    .f(from_just(.m), ...) %>%
       assert_returns_not_maybe() %>%
       just()
 
@@ -130,6 +130,33 @@ maybe_map <- function(.m, .f, ...) {
 #' @rdname maybe_map
 #' @export
 fmap <- maybe_map
+
+#' Evaluate a binary function on two maybe values
+#'
+#' @param .m1 A maybe value
+#' @param .m2 A maybe value
+#' @param .f A binary function to apply to the maybe values
+#' @param ... Named arguments for the function `.f`
+#'
+#' @examples
+#' maybe_map2(just(1), just(2), `+`)
+#' maybe_map2(nothing(), just(2), `/`)
+#' @return A maybe value
+#' @export
+maybe_map2 <- function(.m1, .m2, .f, ...) {
+  maybes <-
+    list(.m1, .m2)
+
+  assert_all_maybes(maybes)
+
+  if (all_justs(maybes))
+    do.call(.f, c(filter_justs(maybes), ...)) %>%
+      assert_returns_not_maybe() %>%
+      just()
+
+  else
+    nothing()
+}
 
 #' Evaluate a maybe returning function on a maybe value
 #'
@@ -149,7 +176,7 @@ and_then <- function(.m, .f, ...) {
   assert_is_maybe(.m)
 
   if (is_just(.m))
-    .f(.m$content, ...) %>%
+    .f(from_just(.m), ...) %>%
       assert_returns_maybe()
 
   else
@@ -174,8 +201,8 @@ bind <- and_then
 maybe_flatten <- function(.m) {
   assert_is_maybe(.m)
 
-  if (is_just(.m) && is_maybe(.m$content))
-    .m$content
+  if (is_just(.m) && is_maybe(from_just(.m)))
+    from_just(.m)
 
   else
     .m
@@ -199,7 +226,7 @@ with_default <- function(.m, default) {
   assert_is_maybe(.m)
 
   if (is_just(.m))
-    .m$content
+    from_just(.m)
 
   else
     default
@@ -208,6 +235,73 @@ with_default <- function(.m, default) {
 #' @rdname with_default
 #' @export
 from_maybe <- with_default
+
+#' Unwrap and call a function on a maybe value or return a default
+#'
+#' @param .m A maybe value
+#' @param .f A function to apply to the maybe value in the case of 'Just'
+#' @param default A default value to return in the case of 'Nothing'
+#'
+#' @examples
+#' just(1:10) %>% maybe_case(mean, 0)
+#' nothing() %>% maybe_case(mean, 0)
+#' @return The return value of the 'Just' function or the default value
+#' @export
+maybe_case <- function(.m, .f, default) {
+  assert_is_maybe(.m)
+
+  if (is_just(.m))
+    .f(from_just(.m))
+
+  else
+    default
+}
+
+#' Unwrap a 'Just' value or throw an error
+#'
+#' @param .m A maybe value
+#'
+#' @examples
+#' just(1) %>% from_just()
+#' @return The unwrapped 'Just' value
+#' @export
+from_just <- function(.m) {
+  assert_is_just(.m)
+
+  .m$content
+}
+
+#' Filter and unwrap a list of 'Just' values
+#'
+#' @param .l List of maybe values
+#'
+#' @examples
+#' filter_justs(list(just(1), nothing(), just("a")))
+#' @return A list of values
+#' @export
+filter_justs <- function(.l) {
+  assert_all_maybes(.l)
+
+  lapply(Filter(is_just, .l), from_just)
+}
+
+#' Map a function over a list and filter only 'Just' values
+#'
+#' @param .l List of values
+#' @param .f A maybe returning function to apply to the maybe values
+#' @param ... Named arguments for the function `.f`
+#'
+#' @examples
+#' filter_map(list(-1, "2", 9), maybe(sqrt))
+#' @return A list of values
+#' @export
+filter_map <- function(.l, .f, ...) {
+  if (not_empty(.l))
+    filter_justs(lapply(.l, .f, ...))
+
+  else
+    .l
+}
 
 #' Check if a maybe value contains a specific value
 #'
@@ -231,7 +325,7 @@ maybe_contains <- function(.m, value) {
     FALSE
 
   else
-    identical(.m$content, value)
+    identical(from_just(.m), value)
 }
 
 #' Check if two maybe values are equal
@@ -312,12 +406,39 @@ as_maybe <- function(a) {
   structure(a, class = "maybe")
 }
 
+all_maybes <- function(.l) {
+  not_empty(.l) && all(Vectorize(is_maybe)(.l))
+}
+
+all_justs <- function(.l) {
+  not_empty(.l) && all(Vectorize(is_just)(.l))
+}
+
 assert_is_maybe <- function(a) {
   if (is_maybe(a))
     invisible(a)
 
   else
     stop("The argument '.m' must be a maybe value.", call. = FALSE)
+}
+
+assert_all_maybes <- function(a) {
+  if (all_maybes(a))
+    invisible(a)
+
+  else
+    stop(
+      "All arguments with the prefix '.m' must be maybe values.",
+      call. = FALSE
+    )
+}
+
+assert_is_just <- function(a) {
+  if (is_just(a))
+    invisible(a)
+
+  else
+    stop("The argument '.m' must be a 'Just' value.", call. = FALSE)
 }
 
 assert_returns_maybe <- function(a) {
