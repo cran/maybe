@@ -12,7 +12,7 @@ status](https://www.r-pkg.org/badges/version/maybe)](https://CRAN.R-project.org/
 coverage](https://codecov.io/gh/armcn/maybe/branch/main/graph/badge.svg)](https://app.codecov.io/gh/armcn/maybe?branch=main)
 [![metacran
 downloads](https://cranlogs.r-pkg.org/badges/maybe)](https://cran.r-project.org/package=maybe)
-
+[![R-CMD-check](https://github.com/armcn/maybe/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/armcn/maybe/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 # Overview
@@ -62,8 +62,32 @@ mean_mpg_of_cyl <- function(.cyl) {
 
 mean_mpg_of_cyl(8L)
 #> [1] 15.1
-
 mean_mpg_of_cyl(100L)
+#> [1] 0
+```
+
+Here is an example of working with data stored in JSON format.
+
+``` r
+library(purrr)
+
+parse_numbers <- 
+  function(x) filter_map(x, maybe(as.numeric))
+
+safe_first <- 
+  maybe(function(x) x[[1]], ensure = not_empty)
+
+sum_first_numbers <- function(json) {
+  jsonlite::fromJSON(json) %>%
+    filter_map(compose(safe_first, parse_numbers)) %>% 
+    perhaps(reduce, default = 0)(`+`)
+}
+
+sum_first_numbers('{"a": [], "b": [1, 2.2, "three"], "c": [3]}')
+#> [1] 4
+sum_first_numbers('{}')
+#> [1] 0
+sum_first_numbers('1, 2, 3')
 #> [1] 0
 ```
 
@@ -77,27 +101,31 @@ behavior later in the program. The maybe type can be used to improve the
 safety of the divide function.
 
 ``` r
-`%//%` <- function(a, b) {
+divide <- function(a, b) {
+  a / b
+}
+
+safe_divide <- function(a, b) {
   if (b == 0) nothing() else just(a / b)
 }
 
-10 / 2
+divide(10, 2)
 #> [1] 5
-10 %//% 2
+safe_divide(10, 2)
 #> Just
 #> [1] 5
 
-10 / 0
+divide(10, 0)
 #> [1] Inf
-10 %//% 0
+safe_divide(10, 0)
 #> Nothing
 ```
 
-`10 %//% 2` returns `Just 5` and `10 %//% 0` returns `Nothing`. These
-are the two possible values of the maybe type. It can be `Just` the
-value, or it can be `Nothing`, the absence of a value. For the value to
-be used as an input to another function you need to specify what will
-happen if the function returns `Nothing`.
+`safe_divide(10, 2)` returns `Just 5` and `safe_divide(10, 0)` returns
+`Nothing`. These are the two possible values of the maybe type. It can
+be `Just` the value, or it can be `Nothing`, the absence of a value. For
+the value to be used as an input to another function you need to specify
+what will happen if the function returns `Nothing`.
 
 This can be done using the `with_default` function. This function will
 return the value contained in the `Just`, or if it is `Nothing` it will
@@ -106,15 +134,15 @@ container can be `Just` the value or `Nothing`. To use the contained
 value in a regular R function you need to unwrap it first.
 
 ``` r
-10 %//% 2
+safe_divide(10, 2)
 #> Just
 #> [1] 5
-10 %//% 2 %>% with_default(0)
+safe_divide(10, 2) %>% with_default(0)
 #> [1] 5
 
-10 %//% 0
+safe_divide(10, 0)
 #> Nothing
-10 %//% 0 %>% with_default(0)
+safe_divide(10, 0) %>% with_default(0)
 #> [1] 0
 ```
 
@@ -132,20 +160,10 @@ result in a maybe. If the input is a `Just` value, the return value of
 will be `Nothing`.
 
 ``` r
-safe_max <- function(a) {
-  if (length(a) == 0L) nothing() else just(max(a))
-}
-
 just(9) %>% maybe_map(sqrt)
 #> Just
 #> [1] 3
 nothing() %>% maybe_map(sqrt)
-#> Nothing
-
-safe_max(1:9) %>% maybe_map(sqrt)
-#> Just
-#> [1] 3
-safe_max(integer(0)) %>% maybe_map(sqrt)
 #> Nothing
 ```
 
@@ -155,16 +173,23 @@ return maybe values) together? The function `and_then`, often called
 function provided must return a maybe value.
 
 ``` r
+safe_max <- function(a) {
+  if (length(a) == 0) nothing() else just(max(a))
+}
+
 safe_sqrt <- function(a) {
   if (a < 0) nothing() else just(sqrt(a))
 }
 
-just(9) %>% and_then(safe_sqrt)
-nothing() %>% and_then(safe_sqrt)
-#> Nothing
+just(1:9) %>%
+  and_then(safe_max) %>%
+  and_then(safe_sqrt)
+#> Just
+#> [1] 3
 
-safe_max(1:9) %>% and_then(safe_sqrt)
-safe_max(integer()) %>% and_then(safe_sqrt)
+nothing() %>%
+  and_then(safe_max) %>%
+  and_then(safe_sqrt)
 #> Nothing
 ```
 
@@ -185,7 +210,10 @@ safe_max <- maybe(max)
 safe_sqrt <- maybe(sqrt, ensure = not_infinite)
 
 safe_max(1:9) %>% and_then(safe_sqrt)
+#> Just
+#> [1] 3
 safe_max("hello") %>% and_then(safe_sqrt)
+#> Nothing
 ```
 
 This pattern of modifying a function with the `maybe` function and then
@@ -194,11 +222,11 @@ setting a default value is so common that there is a shortcut,
 function will always return a regular R value, never maybe values.
 
 ``` r
-safe_max <- perhaps(max, ensure = is.numeric, default = 0)
+perhaps_max <- perhaps(max, ensure = is.numeric, default = 0)
 
-safe_max(1:9) %>% sqrt()
-#> [1] 3
-safe_max("hello") %>% sqrt()
+perhaps_max(1:9) 
+#> [1] 9
+perhaps_max("hello") 
 #> [1] 0
 ```
 
@@ -207,11 +235,13 @@ safe_max("hello") %>% sqrt()
 Multiple predicates can be combined with the `and`/`or` functions.
 
 ``` r
-safe_sqrt <- maybe(mean, ensure = and(not_infinite, not_empty))
+safe_sqrt <- maybe(sqrt, ensure = and(not_nan, not_empty))
 
 safe_sqrt(9)
 #> Just
-#> [1] 9
+#> [1] 3
+safe_sqrt(-1)
+#> Nothing
 ```
 
 Predefined combinations are also provided such as `not_undefined`, which
@@ -235,16 +265,16 @@ The names of functions `maybe_map`, `and_then`, `maybe_flatten`, and
 functions in other functional programming languages. If you would like
 to use the more traditional names aliases are provided.
 
--   `fmap` == `maybe_map`
--   `bind` == `and_then`
--   `join` == `maybe_flatten`
--   `from_maybe` == `with_default`
+- `fmap` == `maybe_map`
+- `bind` == `and_then`
+- `join` == `maybe_flatten`
+- `from_maybe` == `with_default`
 
 ## Inspiration / Prior work
 
--   [monads R package](https://github.com/hadley/monads)
--   [rmonad R package](https://github.com/arendsee/rmonad)
--   [Maybe Monad in R blog
-    post](https://www.r-bloggers.com/2019/05/maybe-monad-in-r/)
--   [Elm Maybe
-    package](https://package.elm-lang.org/packages/elm/core/1.0.5/Maybe)
+- [monads R package](https://github.com/hadley/monads)
+- [rmonad R package](https://github.com/arendsee/rmonad)
+- [Maybe Monad in R blog
+  post](https://www.r-bloggers.com/2019/05/maybe-monad-in-r/)
+- [Elm Maybe
+  package](https://package.elm-lang.org/packages/elm/core/1.0.5/Maybe)

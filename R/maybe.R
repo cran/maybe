@@ -158,6 +158,35 @@ maybe_map2 <- function(.m1, .m2, .f, ...) {
     nothing()
 }
 
+#' Evaluate a ternary function on three maybe values
+#'
+#' @param .m1 A maybe value
+#' @param .m2 A maybe value
+#' @param .m3 A maybe value
+#' @param .f A ternary function to apply to the maybe values
+#' @param ... Named arguments for the function `.f`
+#'
+#' @examples
+#' maybe_map3(just(1), just(2), just(3), function(x, y, z) x + y + z)
+#' maybe_map3(nothing(), just(2), just(3), function(x, y, z) x / y * z)
+#' @return A maybe value
+#' @export
+maybe_map3 <- function(.m1, .m2, .m3, .f, ...) {
+  maybes <-
+    list(.m1, .m2, .m3)
+
+  assert_all_maybes(maybes)
+
+  if (all_justs(maybes))
+    do.call(.f, c(filter_justs(maybes), ...)) %>%
+      assert_returns_not_maybe() %>%
+      just()
+
+  else
+    nothing()
+}
+
+
 #' Evaluate a maybe returning function on a maybe value
 #'
 #' @param .m A maybe value
@@ -177,6 +206,61 @@ and_then <- function(.m, .f, ...) {
 
   if (is_just(.m))
     .f(from_just(.m), ...) %>%
+      assert_returns_maybe()
+
+  else
+    nothing()
+}
+
+#' Evaluate a binary maybe returning function on two maybe values
+#'
+#' @param .m1 A maybe value
+#' @param .m2 A maybe value
+#' @param .f A binary maybe returning function to apply to the maybe values
+#' @param ... Named arguments for the function `.f`
+#'
+#' @examples
+#' and_then2(just(1), just(2), maybe(`+`))
+#' and_then2(nothing(), just(2), maybe(`/`))
+#' @return A maybe value
+#' @export
+and_then2 <- function(.m1, .m2, .f, ...) {
+  maybes <-
+    list(.m1, .m2)
+
+  assert_all_maybes(maybes)
+
+  if (all_justs(maybes))
+    do.call(.f, c(filter_justs(maybes), ...)) %>%
+      assert_returns_maybe()
+
+  else
+    nothing()
+}
+
+#' Evaluate a ternary maybe returning function on three maybe values
+#'
+#' @param .m1 A maybe value
+#' @param .m2 A maybe value
+#' @param .m3 A maybe value
+#' @param .f A ternary maybe returning function to apply to the maybe values
+#' @param ... Named arguments for the function `.f`
+#'
+#' @examples
+#' safe_sum <- maybe(function(x, y, z) sum(x, y, z))
+#'
+#' and_then3(just(1), just(2), just(3), safe_sum)
+#' and_then3(nothing(), just(2), just(3), safe_sum)
+#' @return A maybe value
+#' @export
+and_then3 <- function(.m1, .m2, .m3, .f, ...) {
+  maybes <-
+    list(.m1, .m2, .m3)
+
+  assert_all_maybes(maybes)
+
+  if (all_justs(maybes))
+    do.call(.f, c(filter_justs(maybes), ...)) %>%
       assert_returns_maybe()
 
   else
@@ -321,11 +405,7 @@ filter_map <- function(.l, .f, ...) {
 maybe_contains <- function(.m, value) {
   assert_is_maybe(.m)
 
-  if (is_nothing(.m))
-    FALSE
-
-  else
-    identical(from_just(.m), value)
+  is_just(.m) && identical(from_just(.m), value)
 }
 
 #' Check if two maybe values are equal
@@ -416,7 +496,7 @@ all_justs <- function(.l) {
 
 assert_is_maybe <- function(a) {
   if (is_maybe(a))
-    invisible(a)
+    a
 
   else
     stop("The argument '.m' must be a maybe value.", call. = FALSE)
@@ -424,7 +504,7 @@ assert_is_maybe <- function(a) {
 
 assert_all_maybes <- function(a) {
   if (all_maybes(a))
-    invisible(a)
+    a
 
   else
     stop(
@@ -435,7 +515,7 @@ assert_all_maybes <- function(a) {
 
 assert_is_just <- function(a) {
   if (is_just(a))
-    invisible(a)
+    a
 
   else
     stop("The argument '.m' must be a 'Just' value.", call. = FALSE)
@@ -443,7 +523,7 @@ assert_is_just <- function(a) {
 
 assert_returns_maybe <- function(a) {
   if (is_maybe(a))
-    invisible(a)
+    a
 
   else
     stop(
@@ -460,5 +540,5 @@ assert_returns_not_maybe <- function(a) {
     )
 
   else
-    invisible(a)
+    a
 }
